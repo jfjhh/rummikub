@@ -1,0 +1,51 @@
+name:                rummikub
+version:             0.1.0.0
+github:              "jfjhh/rummikub"
+license:             BSD3
+author:              "Alex Striff"
+maintainer:          "alex.striff1@gmail.com"
+copyright:           "Alex Striff"
+
+extra-source-files:
+- README.md
+- ChangeLog.md
+
+# Metadata used when publishing your package
+# synopsis:            Short description of your package
+# category:            Game
+
+# To avoid duplicated efforts in documentation and dealing with the
+# complications of embedding Haddock markup inside cabal files, it is
+# common to point users to the README.md file.
+description:         Please see the README on GitHub at <https://github.com/jfjhh/rummikub#readme>
+
+dependencies:
+- base >= 4.7 && < 5
+- split
+- pointless-fun
+
+library:
+  source-dirs: src
+
+executables:
+  rummikub-exe:
+    main:                Main.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - rummikub
+
+tests:
+  rummikub-test:
+    main:                Spec.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - rummikub
+    - HUnit
