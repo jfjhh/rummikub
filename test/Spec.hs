@@ -4,50 +4,50 @@ import Data.Function
 import Data.Maybe
 import Rummikub
 
-validNumberSucc :: String -> String -> String -> Test
-validNumberSucc s a b = "Valid number run successor (" ++ s ++ ")"
+validNumberPair :: String -> String -> String -> Test
+validNumberPair s a b = "Valid number run successor (" ++ s ++ ")"
   ~: (fromMaybe False $ ((liftA2 (<#)) `on` tile) a b) @? c
   where c = a ++ " <# " ++ b
 
-validNumberSuccTests :: Test
-validNumberSuccTests = TestList $ TestList <$>
-  [ zipWith (validNumberSucc "number-number")
+validNumberPairTests :: Test
+validNumberPairTests = TestList $ TestList <$>
+  [ zipWith (validNumberPair "number-number")
     ["r1", "b3", "o4", "B2", "*10", "r9",  "*11"]
     ["r2", "b4", "o5", "B3", "*11", "*10", "b12"]
-  , zipWith (validNumberSucc "repeated jokers")
+  , zipWith (validNumberPair "repeated jokers")
     ["j", "cj", "dj", "j", "cj",  "dj", "mj", "mj", "mj"]
     ["j", "cj", "dj", "mj", "mj", "mj", "j", "cj",  "dj"]
-  , zipWith (validNumberSucc "right jokers")
-    ["b2", "b2", "b2", "o12"]
+  , zipWith (validNumberPair "right jokers")
+    ["b6", "b6", "b6", "o12"]
     ["j",  "cj", "dj", "mj" ]
-  , zipWith (validNumberSucc "left jokers")
+  , zipWith (validNumberPair "left jokers")
     ["j",  "cj", "dj", "mj"]
-    ["b2", "b2", "b2", "o1"]]
+    ["b6", "b6", "b6", "o1"]]
 
-invalidNumberSucc :: String -> String -> String -> Test
-invalidNumberSucc s a b = "Invalid number run successor (" ++ s ++ ")"
+invalidNumberPair :: String -> String -> String -> Test
+invalidNumberPair s a b = "Invalid number run successor (" ++ s ++ ")"
   ~: not (fromMaybe True $ ((liftA2 (<#)) `on` tile) a b) @? c
   where c = a ++ " <# " ++ b
 
-invalidNumberSuccTests :: Test
-invalidNumberSuccTests = TestList $ TestList <$>
-  [ zipWith (invalidNumberSucc "number-number")
+invalidNumberPairTests :: Test
+invalidNumberPairTests = TestList $ TestList <$>
+  [ zipWith (invalidNumberPair "number-number")
     ["r2", "b4", "o5", "B3", "*11", "*10", "b12"]
     ["r1", "b3", "o4", "B2", "*10", "r9",  "*11"]
-  , zipWith (invalidNumberSucc "center jokers")
+  , zipWith (invalidNumberPair "center jokers")
     ["mj"]
     ["mj"]
-  , zipWith (invalidNumberSucc "right jokers")
+  , zipWith (invalidNumberPair "right jokers")
     ["o12", "o12", "o12", "o11"]
     ["j",   "cj",  "dj",  "dj" ]
-  , zipWith (invalidNumberSucc "left jokers")
+  , zipWith (invalidNumberPair "left jokers")
     ["j",  "cj", "dj", "dj" ]
-    ["o1", "o1", "o2", "o2"]]
+    ["o1", "o1", "o1", "o2"]]
 
-numberSuccTests :: Test
-numberSuccTests = TestList [validNumberSuccTests, invalidNumberSuccTests]
+numberPairTests :: Test
+numberPairTests = TestList [validNumberPairTests, invalidNumberPairTests]
 
 main :: IO ()
-main = do (_,s) <- runTestText putTextToShowS numberSuccTests
+main = do (_,s) <- runTestText putTextToShowS numberPairTests
           putStr $ s ""
 
