@@ -182,12 +182,15 @@ type Board  = [Run]
 type Frag   = Run
 type PBoard = ([Frag], Board)
 
-friendSplits :: Tile -> [Tile] -> [([Tile], [Tile])]
-friendSplits = liftA2 fmap (flip splitAt) . findIndices . friends
+friendSplits :: Run -> Tile -> [(Frag, Frag)]
+friendSplits = flip $ liftA2 fmap (flip splitAt) . findIndices . friends
+
+friendSplits' :: Run -> Frag -> ([(Frag, Frag)], [(Frag, Frag)])
+friendSplits' = liftA2 (&&&) (. head) (. last) . friendSplits
 
 makeSplitRuns t@(NumTile n c) (xs, xs'@(f@(NumTile m d):ys))
   | succ n == pure m = [rightAdd]
-  | succ m == pure n = [leftAdd]
+  | pure n == succ m = [leftAdd]
   | c /= d = [rightAdd, leftAdd]
   | otherwise = []
   where rightAdd = (xs, t:xs')
@@ -209,6 +212,20 @@ addSplitRun :: (Run, Run) -> PBoard -> PBoard
 addSplitRun = addRuns . sortRuns . splitRunList
   where splitRunList (a, b) = [a, b]
         addRuns (a, b) (c, d) = (a ++ c, b ++ d)
+
+altTopBot :: Int -> [Int] -- altTopBot 4 == [1, 5, 2, 4, 3]
+altTopBot n
+  | n > 0 = take n . join . ap (zipWith $ \a b -> [a, b]) reverse $ [1..n]
+  | otherwise = []
+
+sumSet :: Int -> [[Int]]
+sumSet n = sumSet' n [[]] where
+  sumSet' n ss
+    | n > 0 = [1..n] >>= \a -> sumSet' (n - a) ((a:) <$> ss)
+    | otherwise = ss
+
+fragments :: [a] -> [[[a]]]
+fragments xs = reverse $ flip splitPlaces xs <$> sumSet (length xs)
 
 -- playTile :: Tile -> Board -> [Board]
 playTile t ts = (:[]) $ fmap (splitWhen (friends t)) ts
