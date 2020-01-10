@@ -12,17 +12,17 @@ validNumberPair s a b = "Valid number run successor (" ++ s ++ ")"
 validNumberPairTests :: Test
 validNumberPairTests = TestList $ TestList <$>
   [ zipWith (validNumberPair "number-number")
-    ["r1", "b3", "o4", "B2", "*10", "r9",  "*11"]
-    ["r2", "b4", "o5", "B3", "*11", "*10", "b12"]
+    ["r1", "b3", "o4", "B2"]
+    ["r2", "b4", "o5", "B3"]
   , zipWith (validNumberPair "repeated jokers")
-    ["j", "cj", "dj", "j", "cj",  "dj", "mj", "mj", "mj"]
-    ["j", "cj", "dj", "mj", "mj", "mj", "j", "cj",  "dj"]
+    ["j"]
+    ["j"]
   , zipWith (validNumberPair "right jokers")
-    ["b6", "b6", "b6", "o12"]
-    ["j",  "cj", "dj", "mj" ]
+    ["b6"]
+    ["j"]
   , zipWith (validNumberPair "left jokers")
-    ["j",  "cj", "dj", "mj"]
-    ["b6", "b6", "b6", "o1"]]
+    ["j"]
+    ["b6"]]
 
 invalidNumberPair :: String -> String -> String -> Test
 invalidNumberPair s a b = "Invalid number run successor (" ++ s ++ ")"
@@ -32,17 +32,14 @@ invalidNumberPair s a b = "Invalid number run successor (" ++ s ++ ")"
 invalidNumberPairTests :: Test
 invalidNumberPairTests = TestList $ TestList <$>
   [ zipWith (invalidNumberPair "number-number")
-    ["r2", "b4", "o5", "B3", "*11", "*10", "b12"]
-    ["r1", "b3", "o4", "B2", "*10", "r9",  "*11"]
-  , zipWith (invalidNumberPair "center jokers")
-    ["mj"]
-    ["mj"]
+    ["r2", "b4", "o5", "B3"]
+    ["r1", "b3", "o4", "B2"]
   , zipWith (invalidNumberPair "right jokers")
-    ["o12", "o12", "o12", "o11"]
-    ["j",   "cj",  "dj",  "dj" ]
+    ["o12"]
+    ["j"]
   , zipWith (invalidNumberPair "left jokers")
-    ["j",  "cj", "dj", "dj" ]
-    ["o1", "o1", "o1", "o2"]]
+    ["j"]
+    ["o1"]]
 
 numberPairTests :: Test
 numberPairTests = TestList [validNumberPairTests, invalidNumberPairTests]

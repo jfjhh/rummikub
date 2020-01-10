@@ -7,23 +7,20 @@ import Prelude hiding
   (Enum, succ, pred, toEnum, fromEnum, enumFrom, enumFromThen, enumFromTo, enumFromThenTo)
 import Prelude.SafeEnum
 import Control.Applicative
+import Control.Arrow
 import Control.Monad
 import Data.Function
+import Data.Maybe
 import Data.Function.Pointless
 import Data.Traversable
 import Data.List
 import Data.List.Split
 import Text.Read
 
-infixr 9 <.>
-(<.>) :: Functor f => (a -> b) -> (c -> f a) -> c -> f b
-f <.> g = fmap f . g
+newtype TileNum = TileNum Int deriving (Eq, Ord)
 
-liftAA2 :: (Applicative f1, Applicative f2)
-        => (a -> b -> c) -> f1 (f2 a) -> f1 (f2 b) -> f1 (f2 c)
-liftAA2 = liftA2 . liftA2
-
-newtype TileNum = TileNum Int deriving (Eq, Ord, Show)
+instance Show TileNum where
+  show (TileNum n) = show n
 
 instance Bounded TileNum where
   minBound = TileNum 1
@@ -51,12 +48,34 @@ instance Enum TileNum where
 tilenum :: Int -> Maybe TileNum
 tilenum = toEnum
 
-data Color = Black
-           | Red
-           | Orange
-           | Blue
-           | AnyColor
-           deriving Show
+data Color = Black | Red | Orange | Blue | AnyColor
+
+instance Show Color where
+  show Black    = "B"
+  show Red      = "r"
+  show Orange   = "o"
+  show Blue     = "b"
+  show AnyColor = "*"
+
+instance Eq Color where
+  Black    /= Black    = False
+  Red      /= Red      = False
+  Orange   /= Orange   = False
+  Blue     /= Blue     = False
+  _ /= _ = True
+
+instance Ord Color where
+  compare Black    Red      = LT
+  compare Red      Orange   = LT
+  compare Orange   Blue     = LT
+  compare Blue     Black    = LT
+  compare Black    Black    = EQ
+  compare Red      Red      = EQ
+  compare Orange   Orange   = EQ
+  compare Blue     Blue     = EQ
+  compare AnyColor _        = EQ
+  compare _        AnyColor = EQ
+  compare _        _        = GT
 
 color :: Char -> Maybe Color
 color s
@@ -67,186 +86,130 @@ color s
   | s == '*'  = Just AnyColor
   | otherwise = Nothing
 
-instance Eq Color where
-  Black    == Black    = True
-  Red      == Red      = True
-  Orange   == Orange   = True
-  Blue     == Blue     = True
-  AnyColor == _        = True
-  _        == AnyColor = True
-  _        == _        = False
+data Tile = NumTile TileNum Color | Joker
 
-instance Ord Color where
-  compare Black    Red      = LT
-  compare Red      Orange   = LT
-  compare Orange   Blue     = LT
-  compare Black    Black    = EQ
-  compare Red      Red      = EQ
-  compare Orange   Orange   = EQ
-  compare Blue     Blue     = EQ
-  compare AnyColor _        = EQ
-  compare _        AnyColor = EQ
-  compare _        _        = GT
-
-instance DownwardEnum Color where
-  pred Black    = Just Blue
-  pred Red      = Just Black
-  pred Orange   = Just Red
-  pred Blue     = Just Orange
-  pred AnyColor = Just AnyColor
-  precedes AnyColor _ = True
-  precedes _ AnyColor = True
-  precedes x y = x /= y
-
-data Tile = NumTile TileNum Color
-          | Joker
-          | ColorJoker
-          | DoubleJoker
-          | MirrorJoker
-          deriving Show
+instance Show Tile where
+  show (NumTile n c) = show c ++ show n
+  show Joker = "j"
 
 instance Eq Tile where
-  MirrorJoker   == MirrorJoker = True
-  Joker         == _           = True
-  ColorJoker    == _           = True
-  DoubleJoker   == _           = True
-  MirrorJoker   == _           = False
-  _             == Joker       = True
-  _             == ColorJoker  = True
-  _             == DoubleJoker = True
-  _             == MirrorJoker = False
-  (NumTile n c) == (NumTile m d) = n   == m && c == d
-
-instance Ord Tile where
-  (<=) (NumTile n c) (NumTile m d) = n <= m && c <= d
-  (<=) _ _ = True
-  (<) Joker _     = True
-  (<) _     Joker = True
-  (<) ColorJoker _     = True
-  (<) _     ColorJoker = True
-  (<) a b = a <= b && a /= b
-
-instance DownwardEnum Tile where
-  pred (NumTile n c) = NumTile n <$> pred c
-  pred joker = Just joker
-  precedes (NumTile n c) (NumTile m d) = n == m && c `precedes` d
-  precedes _ _ = True
-
-instance UpwardEnum Tile where
-  succ (NumTile n c) = flip NumTile c <$> succ n
-  succ joker = Just joker
-  succeeds (NumTile n c) (NumTile m d) = c == d && n `succeeds` m
-  succeeds _ _ = True
+  (NumTile n c) == (NumTile m d) = n == m && c == d
+  _ == _ = True -- Comparision with Joker
 
 (<#)   :: Tile -> Tile -> Bool
+(NumTile n c) <# (NumTile m d) = succ n == pure m && c == d
+Joker         <# (NumTile m _) = minBound < m
+(NumTile n _) <# Joker         = n < maxBound
+Joker         <# Joker         = True
+
 (<#<)  :: Tile -> Tile -> Bool
-(<##<) :: Tile -> Tile -> Bool
-(<#)   = (==) $::  succ                    ~> return ~> id
-(<#<)  = (==) $:: (succ <=< succ)          ~> return ~> id
-(<##<) = (==) $:: (succ <=< succ <=< succ) ~> return ~> id
+(NumTile n c) <#< (NumTile m d) = (succ <=< succ) n == pure m && c == d
+Joker         <#< (NumTile m _) = pure minBound < pred m
+(NumTile n _) <#< Joker         = succ n < pure maxBound
+Joker         <#< Joker         = True
+
+(<##<)  :: Tile -> Tile -> Bool
+(NumTile n c) <##< (NumTile m d) = (succ <=< succ <=< succ) n == pure m && c == d
+Joker         <##< (NumTile m _) = pure minBound < (pred <=< pred) m
+(NumTile n _) <##< Joker         = (succ <=< succ) n < pure maxBound
+Joker         <##< Joker         = True
 
 (<@)   :: Tile -> Tile -> Bool
+(NumTile n c) <@ (NumTile m d) = c /= d && n == m
+_ <@ _ = True -- Comparison with Joker
+
 (<@<)  :: Tile -> Tile -> Bool
-(<@@<) :: Tile -> Tile -> Bool
-(<@)   = (==) $:: return ~>  pred                    ~> id
-(<@<)  = (==) $:: return ~> (pred <=< pred)          ~> id
-(<@@<) = (==) $:: return ~> (pred <=< pred <=< pred) ~> id
+(<@<) = (<@)
+
+tileNum :: Tile -> Maybe TileNum
+tileNum (NumTile n _) = pure n
+tileNum Joker = Nothing
+
+tileColor (NumTile _ c) = c
+tileColor _ = AnyColor
 
 tile :: String -> Maybe Tile
 tile [] = Nothing
 tile s@(c:n)
   | s == "j"  = Just Joker
-  | s == "cj" = Just ColorJoker
-  | s == "dj" = Just DoubleJoker
-  | s == "mj" = Just MirrorJoker
   | otherwise = liftA2 NumTile (tilenum =<< readMaybe n) (color c)
 
-tileColor (NumTile _ c) = c
-tileColor _ = AnyColor
-
-data Run = NumRun [Tile]
-         | ColorRun [Tile]
-         deriving Show
+parseTiles :: String -> Maybe [Tile]
+parseTiles = traverse tile . splitOn " "
 
 allRel :: (b -> [(a, a)]) -> (a -> a -> Bool) -> b -> Bool
 allRel p r = all (uncurry r) . p
 
-pairs :: [a] -> [(a, a)]
-pairs = sequence <=< ap zip tails
-
-allPairs :: (a -> a -> Bool) -> [a] -> Bool
-allPairs = allRel pairs
+dpairs :: [a] -> [(a, a)]
+dpairs = sequence <=< ap zip (tail <$> tails)
 
 neighbors :: [a] -> [(a, a)]
 neighbors = ap zip tail
-
-allNeighbors :: (a -> a -> Bool) -> [a] -> Bool
-allNeighbors = allRel neighbors
 
 acquaintances :: [a] -> [(a, a)]
 acquaintances [_] = []
 acquaintances xs  = ap zip (tail . tail) xs
 
-allAcquaintances :: (a -> a -> Bool) -> [a] -> Bool
-allAcquaintances = allRel acquaintances
+randos :: [a] -> [(a, a)]
+randos xs
+  | length xs < 4 = []
+  | otherwise     = ap zip (tail . tail . tail) xs
 
-triples :: [a] -> [((a, a), a)]
-triples = (liftA2 zip . ap zip) tail (tail . tail)
+validNumRun :: [Tile] -> Bool
+validNumRun = (. (&)) . flip all $
+  [ (3 <=) . length
+  , allRel neighbors (<#)
+  , allRel acquaintances (<#<)
+  , allRel randos (<##<)]
 
-allTriples :: (a -> a -> Bool) -> [a] -> Bool
-allTriples = liftAA2 (&&) allNeighbors allAcquaintances
+validColorRun :: [Tile] -> Bool
+validColorRun = (. (&)) . flip all $
+  [ liftA2 (||) (3 ==) (4 ==) . length
+  , allRel dpairs ((/=) `on` tileColor)
+  , allRel neighbors (==) . mapMaybe tileNum]
 
-duplicateDoubleJokers :: [Tile] -> [Tile]
-duplicateDoubleJokers = intercalate [Joker, Joker] . splitOn [DoubleJoker]
+validRun :: [Tile] -> Bool
+validRun = liftA2 (||) validNumRun validColorRun
 
-runEqual :: [Tile] -> [Tile] -> Bool
-runEqual = (==) `on` duplicateDoubleJokers
+friends :: Tile -> Tile -> Bool
+friends (NumTile n c) (NumTile m d) =
+  (n == m && c /= d) || (c == d && (pred n == pure m || succ n == pure m))
+friends Joker _ = True
+friends _ Joker = True
 
-instance Eq Run where
-  (NumRun x)   == (NumRun y)   = x `runEqual` y
-  (ColorRun x) == (ColorRun y) = x `runEqual` y
-  _ == _ = False
+type Run    = [Tile]
+type Board  = [Run]
+type Frag   = Run
+type PBoard = ([Frag], Board)
 
-validMirrorJoker :: [Tile] -> Bool
-validMirrorJoker ts = allNeighbors reverseEqual (splitOn [MirrorJoker] ts)
-  where reverseEqual x y = runEqual x (reverse y)
+friendSplits :: Tile -> [Tile] -> [([Tile], [Tile])]
+friendSplits = liftA2 fmap (flip splitAt) . findIndices . friends
 
-validColorJoker :: Run -> Bool
-validColorJoker (NumRun []) = True
-validColorJoker (NumRun ts) = all ($ subRuns)
-  [all $ allNeighbors sameColor, allNeighbors (differentColor `on` head)]
-  where subRuns = splitOn [ColorJoker] ts
-validColorJoker _ = False
+makeSplitRuns t@(NumTile n c) (xs, xs'@(f@(NumTile m d):ys))
+  | succ n == pure m = [rightAdd]
+  | succ m == pure n = [leftAdd]
+  | c /= d = [rightAdd, leftAdd]
+  | otherwise = []
+  where rightAdd = (xs, t:xs')
+        leftAdd  = (xs ++ [f, t], ys)
+makeSplitRuns t (xs, xs'@(f:ys)) = [(xs, t:xs'), (xs ++ [f, t], ys)]
 
-sameColor :: Tile -> Tile -> Bool
-sameColor = (==) `on` tileColor
+validSplitRun = uncurry ((&&) `on` validRun)
 
-differentColor :: Tile -> Tile -> Bool
-differentColor = (/=) `on` tileColor
+addRun :: Run -> Board -> Board
+addRun = (:)
 
--- TODO: Check valid run length and endpoints for jokers
--- TODO: Combine all the checks
--- FIXME: The number run `b1 j b2` tests valid since Ord Tile is insufficient.
+addRunFrag :: Run -> [Frag] -> [Frag]
+addRunFrag = (:)
 
-all' :: [a -> b -> Bool] -> (a -> b -> Bool)
-all' = (and .:) . sequence <.> sequence
+sortRuns :: [Run] -> ([Run], [Run])
+sortRuns = foldr (\r (a, b) -> if validRun r then (a, r:b) else (r:a, b)) ([], [])
 
-validNumRun x y z
-  | otherwise = x `nn` y && y `nn` z && x `na` z
-  where nn = liftAA2 (&&) (<) sameColor
-        na = liftAA2 (&&) (<#<) sameColor
+addSplitRun :: (Run, Run) -> PBoard -> PBoard
+addSplitRun = addRuns . sortRuns . splitRunList
+  where splitRunList (a, b) = [a, b]
+        addRuns (a, b) (c, d) = (a ++ c, b ++ d)
 
-validRun (NumRun ts)   = duplicateDoubleJokers ts & liftA2 (&&)
-                         (allNeighbors     $ liftAA2 (&&) (<)   sameColor)
-                         (allAcquaintances $ liftAA2 (&&) (<#<) sameColor)
-validRun (ColorRun ts) = allTriples (all' [(<), differentColor]) ts
-
-parseTiles :: String -> Maybe [Tile]
-parseTiles = traverse tile . splitOn " "
-
-parseNumRun :: String -> Maybe Run
-parseNumRun = fmap NumRun . parseTiles
-
-parseColorRun :: String -> Maybe Run
-parseColorRun = fmap ColorRun . parseTiles
+-- playTile :: Tile -> Board -> [Board]
+playTile t ts = (:[]) $ fmap (splitWhen (friends t)) ts
 
