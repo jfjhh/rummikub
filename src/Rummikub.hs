@@ -86,7 +86,7 @@ color s
   | s == '*'  = Just AnyColor
   | otherwise = Nothing
 
-data Tile = NumTile TileNum Color | Joker
+data Tile = NumTile TileNum Color | Joker deriving (Ord)
 
 instance Show Tile where
   show (NumTile n c) = show c ++ show n
@@ -188,42 +188,75 @@ friendSplits = flip $ liftA2 fmap (flip splitAt) . findIndices . friends
 friendSplits' :: Run -> Frag -> ([(Frag, Frag)], [(Frag, Frag)])
 friendSplits' = liftA2 (&&&) (. head) (. last) . friendSplits
 
-makeSplitRuns :: Tile -> (Frag, Frag) -> [(Frag, Frag)]
-makeSplitRuns t@(NumTile n c) (xs, xs'@(f@(NumTile m d):ys))
-  | succ n == pure m = [rightAdd]
-  | pure n == succ m = [leftAdd]
-  | c /= d = [rightAdd, leftAdd]
-  | otherwise = []
-  where rightAdd = (xs, t:xs')
-        leftAdd  = (xs ++ [f, t], ys)
-makeSplitRuns t (xs, xs'@(f:ys)) = [(xs, t:xs'), (xs ++ [f, t], ys)]
+-- splitRuns :: Tile -> (Frag, Frag) -> [(Frag, Frag)]
+-- splitRuns t@(NumTile n c) (xs, xs'@(f@(NumTile m d):ys))
+--   | succ n == pure m = [rightAdd]
+--   | pure n == succ m = [leftAdd]
+--   | c /= d = [rightAdd, leftAdd]
+--   | otherwise = []
+--   where rightAdd = (xs, t:xs')
+--         leftAdd  = (xs ++ [f, t], ys)
+-- splitRuns t (xs, xs'@(f:ys)) = [(xs, t:xs'), (xs ++ [f, t], ys)]
 
-makeLeftSplitRuns' :: Frag -> (Frag, Frag) -> [Frag]
-makeLeftSplitRuns'  fs (xs, (f@(NumTile m d):ys))    = [xs ++ [f] ++ fs, ys]
+leftSplitRuns' :: Frag -> (Frag, Frag) -> [Frag]
+leftSplitRuns'  fs (xs, (f:ys)) = [xs ++ [f] ++ fs, ys]
 
-makeRightSplitRuns' :: Frag -> (Frag, Frag) -> [Frag]
-makeRightSplitRuns' fs (xs, xs'@(f@(NumTile m d):_)) = [xs, fs ++ xs']
+rightSplitRuns' :: Frag -> (Frag, Frag) -> [Frag]
+rightSplitRuns' fs (xs, xs'@(f:_)) = [xs, fs ++ xs']
 
 fragPlays' :: Run -> Frag -> [[Frag]]
-fragPlays' ts fs = (makeLeftSplitRuns' fs <$> ls) ++ (makeRightSplitRuns' fs <$> rs)
+fragPlays' ts fs = (leftSplitRuns' fs <$> ls) ++ (rightSplitRuns' fs <$> rs)
   where (ls, rs) = friendSplits' ts fs
+-- fragPlays' = uncurry (++) .:
+--   ap (liftA2 ((***) `on` fmap) leftSplitRuns' rightSplitRuns') . friendSplits'
 
 fragPlays :: Run -> Frag -> [([Frag], [Run])]
 fragPlays = fmap sortRuns .: fragPlays'
 
-addRun :: Run -> Board -> Board
-addRun = (:)
+frags :: PBoard -> [Frag]
+frags = fst
 
-addRunFrag :: Run -> [Frag] -> [Frag]
-addRunFrag = (:)
+runs :: PBoard -> Board
+runs = snd
 
-sortRuns :: [Run] -> ([Frag], [Run])
+pboard :: [Frag] -> Board -> PBoard
+pboard = (,)
+
+parsePBoard :: [String] -> [String] -> Maybe PBoard
+parsePBoard = liftA2 pboard `on` traverse tiles
+
+dropUnfinished :: [PBoard] -> [PBoard]
+dropUnfinished = filter $ null . frags
+
+select :: Eq b => (a -> [b]) -> a -> [(b, [b])]
+select = (ap (zipWith $ liftA2 (.) (,) delete) repeat .)
+
+stepPlay :: ([PBoard] -> [PBoard]) -> PBoard -> [PBoard]
+stepPlay filt p
+  | null $ frags p = return p
+  | otherwise = do
+  (frag, fs)   <- select frags p -- select a fragment
+  ffs          <- fragments frag -- smash it
+  (frag', fs') <- select id ffs  -- select one of the pieces
+  (run,  rs)   <- select runs  p -- select a run
+  fp           <- filt . uniq $ fragPlays run frag' -- play the fragment in the run
+  return $ addSplitRuns fp $ pboard (filter (not . null) fs' ++ fs) rs
+
+stepPlay' :: Int -> ([PBoard] -> [PBoard]) -> PBoard -> [PBoard]
+stepPlay' n = foldr1 (<=<) . take n . repeat . stepPlay
+
+sortRuns :: [Frag] -> PBoard
 sortRuns = foldr (\r (a, b) -> if validRun r then (a, r:b) else (r:a, b)) mempty
 
-addSplitRun :: (Run, Run) -> PBoard -> PBoard
-addSplitRun = addRuns . sortRuns . splitRunList
-  where splitRunList (a, b) = [a, b]
-        addRuns (a, b) (c, d) = (a ++ c, b ++ d)
+addSplitRuns :: PBoard -> PBoard -> PBoard
+addSplitRuns = mappend
+
+playFrags :: PBoard -> PBoard
+playFrags = (. sortRuns . frags) =<< addSplitRuns . pboard mempty . runs
+-- playFrags p = addSplitRuns (pboard mempty . runs $ p) . sortRuns . frags $ p
+
+uniq :: Eq a => [a] -> [a]
+uniq = nub
 
 altTopBot :: Int -> [Int] -- altTopBot 4 == [1, 5, 2, 4, 3]
 altTopBot n
@@ -238,7 +271,4 @@ sumSet n = sumSet' n [[]] where
 
 fragments :: [a] -> [[[a]]]
 fragments xs = reverse $ flip splitPlaces xs <$> sumSet (length xs)
-
--- playTile :: Tile -> Board -> [Board]
-playTile t ts = (:[]) $ fmap (splitWhen (friends t)) ts
 
