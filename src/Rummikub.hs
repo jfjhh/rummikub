@@ -15,6 +15,7 @@ import Data.Function.Pointless
 import Data.Traversable
 import Data.List
 import Data.List.Split
+import qualified Data.Set.Monad as Set
 import Text.Read
 
 newtype TileNum = TileNum Int deriving (Eq, Ord)
@@ -240,7 +241,8 @@ stepPlay filt p
   (frag', fs') <- select id ffs  -- select one of the pieces
   (run,  rs)   <- select runs  p -- select a run
   fp           <- filt . uniq $ fragPlays run frag' -- play the fragment in the run
-  return $ addSplitRuns fp $ pboard (filter (not . null) fs' ++ fs) rs
+  return $ addSplitRuns (first (filter (not . null)) fp) $
+    pboard (((++) `on` filter (not . null)) fs' fs) rs
 
 stepPlay' :: Int -> ([PBoard] -> [PBoard]) -> PBoard -> [PBoard]
 stepPlay' n = foldr1 (<=<) . take n . repeat . stepPlay
@@ -252,11 +254,10 @@ addSplitRuns :: PBoard -> PBoard -> PBoard
 addSplitRuns = mappend
 
 playFrags :: PBoard -> PBoard
-playFrags = (. sortRuns . frags) =<< addSplitRuns . pboard mempty . runs
--- playFrags p = addSplitRuns (pboard mempty . runs $ p) . sortRuns . frags $ p
+playFrags p = addSplitRuns (pboard mempty . runs $ p) . sortRuns . frags $ p
 
 uniq :: Eq a => [a] -> [a]
-uniq = nub
+uniq = nub -- lame O(n^2)
 
 altTopBot :: Int -> [Int] -- altTopBot 4 == [1, 5, 2, 4, 3]
 altTopBot n
@@ -271,4 +272,7 @@ sumSet n = sumSet' n [[]] where
 
 fragments :: [a] -> [[[a]]]
 fragments xs = reverse $ flip splitPlaces xs <$> sumSet (length xs)
+
+showBoard :: Board -> String
+showBoard = join . intersperse "\n" . fmap (join . intersperse " " . fmap show)
 
