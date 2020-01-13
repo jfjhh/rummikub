@@ -134,8 +134,8 @@ tile s@(c:n)
   | s == "j"  = Just Joker
   | otherwise = liftA2 NumTile (tilenum =<< readMaybe n) (color c)
 
-parseTiles :: String -> Maybe [Tile]
-parseTiles = traverse tile . splitOn " "
+tiles :: String -> Maybe [Tile]
+tiles = traverse tile . splitOn " "
 
 allRel :: (b -> [(a, a)]) -> (a -> a -> Bool) -> b -> Bool
 allRel p r = all (uncurry r) . p
@@ -188,6 +188,7 @@ friendSplits = flip $ liftA2 fmap (flip splitAt) . findIndices . friends
 friendSplits' :: Run -> Frag -> ([(Frag, Frag)], [(Frag, Frag)])
 friendSplits' = liftA2 (&&&) (. head) (. last) . friendSplits
 
+makeSplitRuns :: Tile -> (Frag, Frag) -> [(Frag, Frag)]
 makeSplitRuns t@(NumTile n c) (xs, xs'@(f@(NumTile m d):ys))
   | succ n == pure m = [rightAdd]
   | pure n == succ m = [leftAdd]
@@ -197,7 +198,18 @@ makeSplitRuns t@(NumTile n c) (xs, xs'@(f@(NumTile m d):ys))
         leftAdd  = (xs ++ [f, t], ys)
 makeSplitRuns t (xs, xs'@(f:ys)) = [(xs, t:xs'), (xs ++ [f, t], ys)]
 
-validSplitRun = uncurry ((&&) `on` validRun)
+makeLeftSplitRuns' :: Frag -> (Frag, Frag) -> [Frag]
+makeLeftSplitRuns'  fs (xs, (f@(NumTile m d):ys))    = [xs ++ [f] ++ fs, ys]
+
+makeRightSplitRuns' :: Frag -> (Frag, Frag) -> [Frag]
+makeRightSplitRuns' fs (xs, xs'@(f@(NumTile m d):_)) = [xs, fs ++ xs']
+
+fragPlays' :: Run -> Frag -> [[Frag]]
+fragPlays' ts fs = (makeLeftSplitRuns' fs <$> ls) ++ (makeRightSplitRuns' fs <$> rs)
+  where (ls, rs) = friendSplits' ts fs
+
+fragPlays :: Run -> Frag -> [([Frag], [Run])]
+fragPlays = fmap sortRuns .: fragPlays'
 
 addRun :: Run -> Board -> Board
 addRun = (:)
@@ -205,8 +217,8 @@ addRun = (:)
 addRunFrag :: Run -> [Frag] -> [Frag]
 addRunFrag = (:)
 
-sortRuns :: [Run] -> ([Run], [Run])
-sortRuns = foldr (\r (a, b) -> if validRun r then (a, r:b) else (r:a, b)) ([], [])
+sortRuns :: [Run] -> ([Frag], [Run])
+sortRuns = foldr (\r (a, b) -> if validRun r then (a, r:b) else (r:a, b)) mempty
 
 addSplitRun :: (Run, Run) -> PBoard -> PBoard
 addSplitRun = addRuns . sortRuns . splitRunList
