@@ -10,12 +10,12 @@ import Control.Applicative
 import Control.Arrow
 import Control.Monad
 import Data.Function
+import Data.Functor
 import Data.Maybe
 import Data.Function.Pointless
 import Data.Traversable
 import Data.List
 import Data.List.Split
-import qualified Data.Set.Monad as Set
 import Text.Read
 
 newtype TileNum = TileNum Int deriving (Eq, Ord)
@@ -172,46 +172,47 @@ validColorRun = (. (&)) . flip all $
 validRun :: [Tile] -> Bool
 validRun = liftA2 (||) validNumRun validColorRun
 
-friends :: Tile -> Tile -> Bool
-friends (NumTile n c) (NumTile m d) =
-  (n == m && c /= d) || (c == d && (pred n == pure m || succ n == pure m))
-friends Joker _ = True
-friends _ Joker = True
-
 type Run    = [Tile]
 type Board  = [Run]
 type Frag   = Run
 type PBoard = ([Frag], Board)
 
-friendSplits :: Run -> Tile -> [(Frag, Frag)]
-friendSplits = flip $ liftA2 fmap (flip splitAt) . findIndices . friends
+showBoard :: Board -> String
+showBoard = join . intersperse "\n" . fmap (join . intersperse " " . fmap show)
 
-friendSplits' :: Run -> Frag -> ([(Frag, Frag)], [(Frag, Frag)])
-friendSplits' = liftA2 (&&&) (. head) (. last) . friendSplits
+rightFriends :: Tile -> Tile -> Bool
+rightFriends = (liftA2 . liftA2) (||) (<#) (<@)
 
--- splitRuns :: Tile -> (Frag, Frag) -> [(Frag, Frag)]
--- splitRuns t@(NumTile n c) (xs, xs'@(f@(NumTile m d):ys))
---   | succ n == pure m = [rightAdd]
---   | pure n == succ m = [leftAdd]
---   | c /= d = [rightAdd, leftAdd]
---   | otherwise = []
---   where rightAdd = (xs, t:xs')
---         leftAdd  = (xs ++ [f, t], ys)
--- splitRuns t (xs, xs'@(f:ys)) = [(xs, t:xs'), (xs ++ [f, t], ys)]
+leftFriends :: Tile -> Tile -> Bool
+leftFriends = flip rightFriends
 
-leftSplitRuns' :: Frag -> (Frag, Frag) -> [Frag]
-leftSplitRuns'  fs (xs, (f:ys)) = [xs ++ [f] ++ fs, ys]
+splitBin :: (a -> b -> Bool) -> a -> [b] -> [([b], [b])]
+splitBin = (.) $ liftA2 fmap (flip splitAt) . findIndices
 
-rightSplitRuns' :: Frag -> (Frag, Frag) -> [Frag]
-rightSplitRuns' fs (xs, xs'@(f:_)) = [xs, fs ++ xs']
+leftFriendSplits :: Tile -> Frag -> [(Frag, Frag)]
+leftFriendSplits  = splitBin leftFriends
+rightFriendSplits = splitBin rightFriends
+
+friendSplits :: Frag -> Run -> ([(Frag, Frag)], [(Frag, Frag)])
+friendSplits = liftA2 (&&&) (leftFriendSplits . head) (rightFriendSplits . last)
+
+leftSplitRuns :: Frag -> (Frag, Frag) -> [Frag]
+leftSplitRuns fs (xs, (f:ys))
+  | null ys   = [left]
+  | otherwise = [left, ys]
+  where left  = xs ++ [f] ++ fs
+
+rightSplitRuns :: Frag -> (Frag, Frag) -> [Frag]
+rightSplitRuns fs (xs, xs')
+  | null xs   = [right]
+  | otherwise = [xs, right]
+  where right = fs ++ xs'
 
 fragPlays' :: Run -> Frag -> [[Frag]]
-fragPlays' ts fs = (leftSplitRuns' fs <$> ls) ++ (rightSplitRuns' fs <$> rs)
-  where (ls, rs) = friendSplits' ts fs
--- fragPlays' = uncurry (++) .:
---   ap (liftA2 ((***) `on` fmap) leftSplitRuns' rightSplitRuns') . friendSplits'
+fragPlays' ts fs = (leftSplitRuns fs <$> ls) ++ (rightSplitRuns fs <$> rs)
+  where (ls, rs) = friendSplits fs ts
 
-fragPlays :: Run -> Frag -> [([Frag], [Run])]
+fragPlays :: Run -> Frag -> [PBoard]
 fragPlays = fmap sortRuns .: fragPlays'
 
 frags :: PBoard -> [Frag]
@@ -225,36 +226,6 @@ pboard = (,)
 
 parsePBoard :: [String] -> [String] -> Maybe PBoard
 parsePBoard = liftA2 pboard `on` traverse tiles
-
-dropUnfinished :: [PBoard] -> [PBoard]
-dropUnfinished = filter $ null . frags
-
-select :: Eq b => (a -> [b]) -> a -> [(b, [b])]
-select = (ap (zipWith $ liftA2 (.) (,) delete) repeat .)
-
-stepPlay :: ([PBoard] -> [PBoard]) -> PBoard -> [PBoard]
-stepPlay filt p
-  | null $ frags p = return p
-  | otherwise = do
-  (frag, fs)   <- select frags p -- select a fragment
-  ffs          <- fragments frag -- smash it
-  (frag', fs') <- select id ffs  -- select one of the pieces
-  (run,  rs)   <- select runs  p -- select a run
-  fp           <- filt . uniq $ fragPlays run frag' -- play the fragment in the run
-  return $ addSplitRuns (first (filter (not . null)) fp) $
-    pboard (((++) `on` filter (not . null)) fs' fs) rs
-
-stepPlay' :: Int -> ([PBoard] -> [PBoard]) -> PBoard -> [PBoard]
-stepPlay' n = foldr1 (<=<) . take n . repeat . stepPlay
-
-sortRuns :: [Frag] -> PBoard
-sortRuns = foldr (\r (a, b) -> if validRun r then (a, r:b) else (r:a, b)) mempty
-
-addSplitRuns :: PBoard -> PBoard -> PBoard
-addSplitRuns = mappend
-
-playFrags :: PBoard -> PBoard
-playFrags p = addSplitRuns (pboard mempty . runs $ p) . sortRuns . frags $ p
 
 uniq :: Eq a => [a] -> [a]
 uniq = nub -- lame O(n^2)
@@ -273,6 +244,64 @@ sumSet n = sumSet' n [[]] where
 fragments :: [a] -> [[[a]]]
 fragments xs = reverse $ flip splitPlaces xs <$> sumSet (length xs)
 
-showBoard :: Board -> String
-showBoard = join . intersperse "\n" . fmap (join . intersperse " " . fmap show)
+sortRuns :: [Frag] -> PBoard
+sortRuns = foldr (\r (a, b) -> if validRun r then (a, r:b) else (r:a, b)) mempty
+
+addSplitRuns :: PBoard -> PBoard -> PBoard
+addSplitRuns = mappend
+
+playFrags :: PBoard -> PBoard
+playFrags p = addSplitRuns (pboard mempty . runs $ p) . sortRuns . frags $ p
+
+select :: Eq b => (a -> [b]) -> a -> [(b, [b])]
+select = (ap (zipWith $ liftA2 (.) (,) delete) repeat .)
+
+dropUnfinished :: [PBoard] -> [PBoard]
+dropUnfinished = filter $ null . frags
+
+liftFrag :: Functor f => ([Frag] -> f [Frag]) -> PBoard -> f PBoard
+liftFrag f = uncurry (<&>) . (f *** flip pboard)
+
+fragment :: PBoard -> [(Frag, [Frag])]
+fragment p = do
+  (frag, fs)   <- select frags p -- select a fragment
+  ffs          <- fragments frag -- smash it
+  (frag', fs') <- select id ffs  -- select one of the pieces
+  return $ (frag', fs' ++ fs)
+
+stepPlay :: ([PBoard] -> [PBoard]) -> PBoard -> [PBoard]
+stepPlay filt p
+  | null $ frags p = return p
+  | otherwise = do
+  (frag, fs)   <- fragment p     -- select a fragment (by smashing)
+  (run,  rs)   <- select runs p  -- select a run
+  -- fp           <- filt . uniq $ fragPlays run frag -- play the fragment in the run
+  fp           <- filt $ fragPlays run frag -- play the fragment in the run
+  return $ addSplitRuns fp $ pboard fs rs
+
+stepPlay' :: Int -> ([PBoard] -> [PBoard]) -> PBoard -> [PBoard]
+stepPlay' n = foldr1 (<=<) . take n . repeat . stepPlay
+
+fuse :: Eq a => [a] -> [a] -> [[a]]
+fuse x@(a:as) y@(b:bs)
+  | last as == b = [x ++ bs]
+  | a == last bs = [y ++ as]
+  | otherwise    = [x, y]
+
+-- TODO: solve problem of turning
+-- [[b1], [b2], [b3]] into [[b1 b2 b3]] without duplicates or using uniq/nub
+
+-- fuseFrags' :: [Frag] -> [[Frag]]
+-- fuseFrags' fl = do
+--   (f, f')   <- dpairs fl
+--   return $ fuse f f' ++ (fl \\ [f, f'])
+
+groupFrags' :: [Frag] -> [[Frag]]
+groupFrags' fl = do
+  (f, f')   <- dpairs fl
+  fg        <- fragPlays' f f'
+  return $ fg ++ (fl \\ [f, f'])
+
+groupFrags :: PBoard -> [PBoard]
+groupFrags = liftFrag groupFrags'
 
