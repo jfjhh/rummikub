@@ -305,3 +305,38 @@ groupFrags' fl = do
 groupFrags :: PBoard -> [PBoard]
 groupFrags = liftFrag groupFrags'
 
+-- Graph stuff
+
+split2 :: Int -> Int -> [a] -> ([a], [a])
+split2 i j xs = (ys, zs)
+  where (ys, ys') = splitAt i xs
+        zs = drop j ys'
+
+constrain1 :: Int -> [Bool] -> Int -> [[Bool]]
+constrain1 m xs i
+  | m > l = [[]]
+  | otherwise = fmap (\i -> sandwich (split2 i m xs) ts) [a..b]
+  where l = length xs
+        ts = replicate m True
+        a = max 0 $ i - (m - 1)
+        b = min i $ l - m
+        sandwich (x, y) z = x ++ z ++ y
+
+-- True represents a constrained vertex that will be propagated
+constrain :: Int -> [Bool] -> [[Bool]]
+constrain m xs
+  | length xs < m  = [[]]
+  | not (or xs) = [xs]
+  | otherwise = fmap (minimumBy howConstrained)
+    . groupBy ((==) `on` parts)
+    . foldr1 (liftA2 $ zipWith (||))
+    . fmap (constrain1 m xs)
+    $ findIndices id xs
+    where trues = length . filter id
+          howConstrained = compare `on` trues
+          sigbool b = if b then 1 else -1
+          parts bs = ((*) . sigbool . head $ bs)
+            . length . filter (uncurry (/=)) . ap zip tail $ bs
+
+showConstraint = join . fmap (\b -> if b then "o" else "*")
+
