@@ -346,8 +346,8 @@ showConstraint = join . fmap (\b -> if b then "o" else "*")
 mpow :: Matrix Z -> Int -> Matrix Z
 mpow = mconcat .: flip replicate
 
-adjMatrix :: (a -> a -> Bool) -> [a] -> Matrix Z
-adjMatrix r = ap (join (><) . length) (fmap edge . join (liftA2 r))
+adjacencyMatrix :: (a -> a -> Bool) -> [a] -> Matrix Z
+adjacencyMatrix r = ap (join (><) . length) (fmap edge . join (liftA2 r))
   where edge b = (if b then 1 else 0) :: Z
 
 paths :: Int -> Matrix Z -> Int -> Z
@@ -361,4 +361,6 @@ tileGraph :: (Tile -> Tile -> Bool) -> [Tile]
 tileGraph r ts = graphFromEdges
   $ zipWith (\t i -> (t, i, fmap snd . filter fst
     $ zipWith (\t' j -> (r t t', j)) ts [0..])) ts [0..]
+
+suckers m g = concat . filter ((m >) . length) . fmap (foldMap (:[])) . components $ g
 
