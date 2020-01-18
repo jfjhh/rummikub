@@ -309,6 +309,8 @@ groupFrags = liftFrag groupFrags'
 
 -- Graph stuff
 
+type NGraph node key = (Graph, Vertex -> (node, key, [key]), key -> Maybe Vertex)
+
 split2 :: Int -> Int -> [a] -> ([a], [a])
 split2 i j xs = (ys, zs)
   where (ys, ys') = splitAt i xs
@@ -342,7 +344,6 @@ constrain m xs
 
 showConstraint = join . fmap (\b -> if b then "o" else "*")
 
-
 mpow :: Matrix Z -> Int -> Matrix Z
 mpow = mconcat .: flip replicate
 
@@ -357,10 +358,13 @@ minpaths :: Int -> Int -> Matrix Z -> Z
 minpaths m i a = sum $ fmap (paths i a) [m..cols a]
 
 tileGraph :: (Tile -> Tile -> Bool) -> [Tile]
-          -> (Graph, Vertex -> (Tile, Int, [Int]), Int -> Maybe Vertex)
+          -> NGraph Tile Int
 tileGraph r ts = graphFromEdges
   $ zipWith (\t i -> (t, i, fmap snd . filter fst
     $ zipWith (\t' j -> (r t t', j)) ts [0..])) ts [0..]
 
-suckers m g = concat . filter ((m >) . length) . fmap (foldMap (:[])) . components $ g
+-- Here m is the number of tiles
+survivors :: Ord key => Int -> NGraph node key -> NGraph node key
+survivors m (g, nfk, _) = graphFromEdges . fmap nfk . survivors' $ g
+  where survivors' = concat . fmap (foldMap (:[])) . filter ((m <=) . length) . components
 
