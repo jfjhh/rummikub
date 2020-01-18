@@ -14,9 +14,11 @@ import Data.Functor
 import Data.Maybe
 import Data.Function.Pointless
 import Data.Traversable
+import Data.Graph
 import Data.List
 import Data.List.Split
 import Text.Read
+import Numeric.LinearAlgebra hiding ((<#), (<>))
 
 newtype TileNum = TileNum Int deriving (Eq, Ord)
 
@@ -339,4 +341,24 @@ constrain m xs
             . length . filter (uncurry (/=)) . ap zip tail $ bs
 
 showConstraint = join . fmap (\b -> if b then "o" else "*")
+
+
+mpow :: Matrix Z -> Int -> Matrix Z
+mpow = mconcat .: flip replicate
+
+adjMatrix :: (a -> a -> Bool) -> [a] -> Matrix Z
+adjMatrix r = ap (join (><) . length) (fmap edge . join (liftA2 r))
+  where edge b = (if b then 1 else 0) :: Z
+
+paths :: Int -> Matrix Z -> Int -> Z
+paths i = liftA2 ((+) `on` sumElements . (!! i)) toColumns toRows .: mpow
+
+minpaths :: Int -> Int -> Matrix Z -> Z
+minpaths m i a = sum $ fmap (paths i a) [m..cols a]
+
+tileGraph :: (Tile -> Tile -> Bool) -> [Tile]
+          -> (Graph, Vertex -> (Tile, Int, [Int]), Int -> Maybe Vertex)
+tileGraph r ts = graphFromEdges
+  $ zipWith (\t i -> (t, i, fmap snd . filter fst
+    $ zipWith (\t' j -> (r t t', j)) ts [0..])) ts [0..]
 
