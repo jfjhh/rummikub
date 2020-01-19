@@ -311,6 +311,9 @@ groupFrags = liftFrag groupFrags'
 
 type NGraph node key = (Graph, Vertex -> (node, key, [key]), key -> Maybe Vertex)
 
+graph :: Ord key => NGraph node key -> Graph
+graph (g, _, _) = g
+
 split2 :: Int -> Int -> [a] -> ([a], [a])
 split2 i j xs = (ys, zs)
   where (ys, ys') = splitAt i xs
@@ -327,11 +330,13 @@ constrain1 m xs i
         sandwich (x, y) z = x ++ z ++ y
 
 -- True represents a constrained vertex that will be propagated
+-- m is the minimum number of tiles required to form a run
 constrain :: Int -> [Bool] -> [[Bool]]
 constrain m xs
   | length xs < m  = [[]]
   | not (or xs) = [xs]
-  | otherwise = fmap (minimumBy howConstrained)
+  | otherwise = nub
+    . join -- . fmap (minimumBy howConstrained)
     . groupBy ((==) `on` parts)
     . foldr1 (liftA2 $ zipWith (||))
     . fmap (constrain1 m xs)
@@ -364,7 +369,14 @@ tileGraph r ts = graphFromEdges
     $ zipWith (\t' j -> (r t t', j)) ts [0..])) ts [0..]
 
 -- Here m is the number of tiles
-survivors :: Ord key => Int -> NGraph node key -> NGraph node key
-survivors m (g, nfk, _) = graphFromEdges . fmap nfk . survivors' $ g
-  where survivors' = concat . fmap (foldMap (:[])) . filter ((m <=) . length) . components
+partitionRuns m = join (***) (concat . fmap (foldMap (:[])))
+  . partition ((m <=) . length) . components . graph
+
+constraints :: Ord key => Int -> [NGraph node key] -> [[[(Vertex, Bool)]]]
+constraints m gs = fmap ((\(a, b) -> (fmap . fmap) (id &&& (`elem` b)) a)
+  . (fst *** outcasts . fmap snd)) . select id
+  . fmap ((id *** concat) . partRuns . comps) $ gs
+  where comps = fmap (foldMap (:[])) . components . graph
+        partRuns = partition ((m <=) . length)
+        outcasts = foldr1 intersect
 
