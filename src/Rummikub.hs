@@ -314,6 +314,12 @@ type NGraph node key = (Graph, Vertex -> (node, key, [key]), key -> Maybe Vertex
 graph :: Ord key => NGraph node key -> Graph
 graph (g, _, _) = g
 
+nodeFromVertex :: Ord key => NGraph node key -> (Vertex -> (node, key, [key]))
+nodeFromVertex (_, nfv, _) = nfv
+
+vertexFromKey :: Ord key => NGraph node key -> (key -> Maybe Vertex)
+vertexFromKey (_, _, vfk) = vfk
+
 split2 :: Int -> Int -> [a] -> ([a], [a])
 split2 i j xs = (ys, zs)
   where (ys, ys') = splitAt i xs
@@ -331,6 +337,7 @@ constrain1 m xs i
 
 -- True represents a constrained vertex that will be propagated
 -- m is the minimum number of tiles required to form a run
+-- TODO: Rewrite to always be minimal
 constrain :: Int -> [Bool] -> [[Bool]]
 constrain m xs
   | length xs < m  = [[]]
