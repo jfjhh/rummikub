@@ -247,7 +247,7 @@ fragments :: [a] -> [[[a]]]
 fragments xs = reverse $ flip splitPlaces xs <$> sumSet (length xs)
 
 sortRuns :: [Frag] -> PBoard
-sortRuns = foldr (\r (a, b) -> if validRun r then (a, r:b) else (r:a, b)) mempty
+sortRuns = foldl (\(a, b) r -> if validRun r then (a, r:b) else (r:a, b)) mempty
 
 addSplitRuns :: PBoard -> PBoard -> PBoard
 addSplitRuns = mappend
@@ -354,7 +354,29 @@ constrain m xs
           parts bs = ((*) . sigbool . head $ bs)
             . length . filter (uncurry (/=)) . ap zip tail $ bs
 
-showConstraint = join . fmap (\b -> if b then "o" else "*")
+-- Needs tests to check all cases
+-- TODO: add more counting stuff to deal with cases like splitting
+-- *oo...oo* (or maybe even *oo..oo*)
+growthComponents :: Int -> [Bool] -> [[Bool]]
+growthComponents m bs = flip splitPlaces bs . reverse $ maxBound:gs -- maxBound avoids calculating length
+  where gc (c, n, i, gs, j) True  = (True, 1, i + 1, maybe gs (:gs) j, Nothing)
+        gc (c, n, i, gs, j) False = if n == 2 * (m - 1)
+                                    then (False, 1, m, gs, Just $ i - (m - 1))
+                                    else (c, n', i + 1, gs, j)
+                                    where n' = if c then n + 1 else 0
+        (_, _, i, gs, _) = foldl gc (False, 1, 1, [], Nothing) bs
+
+showConstraint :: [Bool] -> String
+showConstraint = fmap $ \b -> if b then 'o' else '.'
+
+parseConstraint :: String -> Maybe [Bool]
+parseConstraint = traverse parseConstraint'
+  where parseConstraint' c
+          | c == '.'  = Just False
+          | c == 'o'  = Just True
+          | otherwise = Nothing
+
+parseConstraint' = fromJust . parseConstraint
 
 mpow :: Matrix Z -> Int -> Matrix Z
 mpow = mconcat .: flip replicate
@@ -385,5 +407,5 @@ constraints m gs = fmap ((\(a, b) -> (fmap . fmap) (id &&& (`elem` b)) a)
   . fmap ((id *** concat) . partRuns . comps) $ gs
   where comps = fmap (foldMap (:[])) . components . graph
         partRuns = partition ((m <=) . length)
-        outcasts = foldr1 intersect
+        outcasts = foldl1 intersect
 
